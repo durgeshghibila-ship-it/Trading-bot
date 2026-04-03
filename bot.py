@@ -3,17 +3,40 @@ import yfinance as yf
 import ta
 import requests
 import time
+from datetime import datetime
 
 TOKEN = os.getenv("8778308838:AAHrxgW-TPJjqYKvGRXS_mnWaF_uQtn37HE")
 CHAT_ID = os.getenv("510092657")
 
 stocks = ["RELIANCE.NS","HDFCBANK.NS","ICICIBANK.NS"]
 
+# -------- TELEGRAM --------
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
-def analyze(stock):
+# -------- MARKET TIME FILTER --------
+def market_open():
+    now = datetime.now()
+    return now.hour >= 9 and now.hour < 15
+
+# -------- NIFTY TREND --------
+def market_trend():
+    df = yf.download("^NSEI", interval="15m", period="1d")
+    df['ema20'] = ta.trend.ema_indicator(df['Close'], 20)
+    df['ema50'] = ta.trend.ema_indicator(df['Close'], 50)
+
+    last = df.iloc[-1]
+
+    if last['Close'] > last['ema20'] > last['ema50']:
+        return "BULLISH"
+    elif last['Close'] < last['ema20'] < last['ema50']:
+        return "BEARISH"
+    else:
+        return "SIDEWAYS"
+
+# -------- SIGNAL LOGIC --------
+def analyze(stock, trend):
     try:
         df = yf.download(stock, interval="5m", period="1d")
 
@@ -25,35 +48,69 @@ def analyze(stock):
         last = df.iloc[-1]
         prev = df.iloc[-2]
 
-        # Conditions
-        trend = last['Close'] > last['ema20'] > last['ema50']
-        rsi_ok = 50 < last['rsi'] < 70
-        volume_ok = last['Volume'] > 1.5 * last['vol_avg']
-        breakout = last['Close'] > prev['High']
+        # BUY CONDITIONS
+        buy = (
+            trend == "BULLISH" and
+            last['Close'] > last['ema20'] > last['ema50'] and
+            50 < last['rsi'] < 70 and
+            last['Volume'] > 1.5 * last['vol_avg'] and
+            last['Close'] > prev['High']
+        )
 
-        if trend and rsi_ok and volume_ok and breakout:
+        # SELL CONDITIONS
+        sell = (
+            trend == "BEARISH" and
+            last['Close'] < last['ema20'] < last['ema50'] and
+            30 < last['rsi'] < 50 and
+            last['Volume'] > 1.5 * last['vol_avg'] and
+            last['Close'] < prev['Low']
+        )
+
+        if buy:
             entry = last['Close']
             sl = prev['Low']
             target = entry + (entry - sl) * 2
 
-            msg = f"""🔥 SIGNAL
+            send(f"""🚀 BUY SIGNAL
 
 Stock: {stock}
 Entry: {round(entry,2)}
 SL: {round(sl,2)}
 Target: {round(target,2)}
 
-✔ EMA Trend
-✔ RSI Momentum
-✔ Volume Spike
-✔ Breakout
-"""
-            send(msg)
+Trend: {trend}
+""")
+
+        elif sell:
+            entry = last['Close']
+            sl = prev['High']
+            target = entry - (sl - entry) * 2
+
+            send(f"""🔻 SELL SIGNAL
+
+Stock: {stock}
+Entry: {round(entry,2)}
+SL: {round(sl,2)}
+Target: {round(target,2)}
+
+Trend: {trend}
+""")
 
     except Exception as e:
-        print(e)
+        print(f"Error in {stock}: {e}")
 
+# -------- MAIN LOOP --------
 while True:
-    for s in stocks:
-        analyze(s)
-    time.sleep(300)
+    try:
+        if market_open():
+            trend = market_trend()
+
+            if trend != "SIDEWAYS":
+                for s in stocks:
+                    analyze(s, trend)
+
+        time.sleep(300)
+
+    except Exception as e:
+        print("Main loop error:", e)
+        time.sleep(60)
