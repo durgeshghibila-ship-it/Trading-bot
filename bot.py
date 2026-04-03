@@ -7,8 +7,8 @@ import time
 from datetime import datetime
 
 # ---------------- CONFIG ----------------
-TOKEN = "YOUR_TELEGRAM_TOKEN"
-CHAT_ID = "YOUR_CHAT_ID"
+TOKEN = "8778308838:AAHrxgW-TPJjqYKvGRXS_mnWaF_uQtn37HE"
+CHAT_ID = "510092657"
 CAPITAL = 10000
 RISK = 0.01
 
