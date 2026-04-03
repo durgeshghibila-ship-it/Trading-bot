@@ -1,4 +1,1 @@
-yfinance
-pandas
-ta
 requests
