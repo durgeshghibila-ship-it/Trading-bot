@@ -3,24 +3,34 @@ import yfinance as yf
 import ta
 import requests
 import time
+import threading
 from datetime import datetime
+from flask import Flask
 
+# -------- FLASK APP --------
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Trading Bot is Running ✅"
+
+# -------- TELEGRAM --------
 TOKEN = os.getenv("8778308838:AAHrxgW-TPJjqYKvGRXS_mnWaF_uQtn37HE")
 CHAT_ID = os.getenv("510092657")
 
-stocks = ["RELIANCE.NS","HDFCBANK.NS","ICICIBANK.NS"]
-
-# -------- TELEGRAM --------
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
-# -------- MARKET TIME FILTER --------
+# -------- STOCK LIST --------
+stocks = ["RELIANCE.NS","HDFCBANK.NS","ICICIBANK.NS"]
+
+# -------- MARKET TIME --------
 def market_open():
     now = datetime.now()
     return now.hour >= 9 and now.hour < 15
 
-# -------- NIFTY TREND --------
+# -------- MARKET TREND --------
 def market_trend():
     df = yf.download("^NSEI", interval="15m", period="1d")
     df['ema20'] = ta.trend.ema_indicator(df['Close'], 20)
@@ -48,7 +58,6 @@ def analyze(stock, trend):
         last = df.iloc[-1]
         prev = df.iloc[-2]
 
-        # BUY CONDITIONS
         buy = (
             trend == "BULLISH" and
             last['Close'] > last['ema20'] > last['ema50'] and
@@ -57,7 +66,6 @@ def analyze(stock, trend):
             last['Close'] > prev['High']
         )
 
-        # SELL CONDITIONS
         sell = (
             trend == "BEARISH" and
             last['Close'] < last['ema20'] < last['ema50'] and
@@ -99,18 +107,28 @@ Trend: {trend}
     except Exception as e:
         print(f"Error in {stock}: {e}")
 
-# -------- MAIN LOOP --------
-while True:
-    try:
-        if market_open():
-            trend = market_trend()
+# -------- MAIN BOT LOOP --------
+def run_bot():
+    while True:
+        try:
+            print("Bot running...")
 
-            if trend != "SIDEWAYS":
-                for s in stocks:
-                    analyze(s, trend)
+            if market_open():
+                trend = market_trend()
 
-        time.sleep(300)
+                if trend != "SIDEWAYS":
+                    for s in stocks:
+                        analyze(s, trend)
 
-    except Exception as e:
-        print("Main loop error:", e)
-        time.sleep(60)
+            time.sleep(300)
+
+        except Exception as e:
+            print("Main loop error:", e)
+            time.sleep(60)
+
+# -------- START THREAD --------
+threading.Thread(target=run_bot).start()
+
+# -------- RUN FLASK --------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
